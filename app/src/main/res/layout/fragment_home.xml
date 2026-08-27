@@ -7,14 +7,12 @@
     android:layout_height="match_parent"
     app:consumeSystemWindowsInsets="@integer/internal_fragment_insets"
     app:edgeToEdge="true"
-    app:fitsSystemWindowsInsets="@integer/internal_fragment_insets"
-    tools:shrinkMode="strict">
+    app:fitsSystemWindowsInsets="@integer/internal_fragment_insets">
 
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fitsSystemWindows="false"
         app:fitsSystemWindowsInsets="@integer/internal_fragment_top_insets">
 
         <com.google.android.material.appbar.CollapsingToolbarLayout
@@ -22,7 +20,6 @@
             style="?collapsingToolbarLayoutLargeStyle"
             android:layout_width="match_parent"
             android:layout_height="?collapsingToolbarLayoutMediumSize"
-            android:fitsSystemWindows="false"
             app:titleCollapseMode="fade">
 
             <com.google.android.material.appbar.MaterialToolbar
@@ -30,18 +27,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="?actionBarSize"
                 android:elevation="0dp"
-                app:layout_collapseMode="pin"
-                tools:ignore="PrivateResource" />
+                app:layout_collapseMode="pin" />
         </com.google.android.material.appbar.CollapsingToolbarLayout>
-
     </com.google.android.material.appbar.AppBarLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:fitsSystemWindowsInsets="@integer/internal_fragment_bottom_insets"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior"
-        tools:ignore="MissingPrefix">
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <rikka.widget.borderview.BorderNestedScrollView
             android:id="@+id/nestedScrollView"
@@ -55,12 +49,10 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:animateLayoutChanges="true"
                 android:orientation="vertical"
                 android:paddingHorizontal="@dimen/m3_appbar_expanded_title_margin_horizontal"
                 android:paddingTop="?dialogPreferredPadding"
-                android:paddingBottom="120dp"
-                tools:context=".ui.activity.MainActivity">
+                android:paddingBottom="120dp">
 
                 <!-- App Selector -->
                 <com.google.android.material.textfield.TextInputLayout
@@ -78,33 +70,59 @@
                         tools:ignore="LabelFor" />
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <!-- Library Path -->
-                <LinearLayout
-                    android:id="@+id/lib_path_holder"
+                <!-- Library 1 -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/libPathChoose"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp">
+                    android:layout_marginTop="16dp"
+                    android:hint="Library 1 (required)"
+                    app:endIconDrawable="@drawable/folder_open_outline"
+                    app:endIconMode="custom">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/lib_path"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="text" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Library 2 + Clear button -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
 
                     <com.google.android.material.textfield.TextInputLayout
-                        android:id="@+id/libPathChoose"
+                        android:id="@+id/lib2PathChoose"
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:hint="Library Path"
+                        android:hint="Library 2 (optional)"
                         app:endIconDrawable="@drawable/folder_open_outline"
                         app:endIconMode="custom">
 
                         <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/lib_path"
+                            android:id="@+id/lib2_path"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:inputType="text" />
-
                     </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/clear_lib2"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="✕" />
                 </LinearLayout>
 
-                <!-- Saved Apps Title -->
+                <!-- Saved Apps -->
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -113,27 +131,21 @@
                     android:text="Saved Apps"
                     android:textAppearance="?attr/textAppearanceTitleMedium" />
 
-                <!-- Saved Apps List -->
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/saved_apps_list"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:nestedScrollingEnabled="false"
-                    tools:listitem="@layout/item_saved_app" />
+                    android:nestedScrollingEnabled="false" />
 
             </LinearLayout>
-
         </rikka.widget.borderview.BorderNestedScrollView>
-
     </FrameLayout>
 
-    <!-- Bottom Install Button only -->
+    <!-- Install Button -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_marginBottom="16dp"
-        android:orientation="horizontal"
         android:padding="16dp">
 
         <com.google.android.material.button.MaterialButton
@@ -141,7 +153,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Save &amp; Install" />
-
     </LinearLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
