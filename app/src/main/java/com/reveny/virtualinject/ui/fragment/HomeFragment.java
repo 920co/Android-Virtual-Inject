@@ -53,7 +53,7 @@ public class HomeFragment extends BaseFragment {
     private static final String KEY_CONFIGS = "saved_configs";
 
     private String selectedApp;
-    private final List<String> selectedLibraryPaths = new ArrayList<>();
+    private String libraryPath;
     private final List<SavedConfig> savedConfigs = new ArrayList<>();
     private SavedAppsAdapter adapter;
     private FragmentHomeBinding binding;
@@ -75,39 +75,42 @@ public class HomeFragment extends BaseFragment {
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (requestCode != 1 || resultCode != Activity.RESULT_OK || data == null) return;
-
-        List<Uri> uris = new ArrayList<>();
-        if (data.getClipData() != null) {
-            ClipData clipData = data.getClipData();
-            for (int i = 0; i < clipData.getItemCount(); i++) uris.add(clipData.getItemAt(i).getUri());
-        } else if (data.getData() != null) {
-            uris.add(data.getData());
+        if (requestCode != 1 || resultCode != Activity.RESULT_OK || data == null) {
+            return;
         }
 
-        selectedLibraryPaths.clear();
-        int successCount = 0;
+        Uri fileUri = data.getData();
+        if (fileUri == null) {
+            Toast.makeText(getActivity(), "File selection failed", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-        for (Uri fileUri : uris) {
-            String path = fileUri.getPath();
-            if (path == null) continue;
-            String fileName = path.substring(path.lastIndexOf('/') + 1);
-            File dest = new File(requireContext().getCacheDir(), fileName);
+        String path = fileUri.getPath();
+        if (path == null || !path.endsWith(".so")) {
+            Toast.makeText(getActivity(), "Please select a valid .so file", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-            try (InputStream in = requireContext().getContentResolver().openInputStream(fileUri);
-                 OutputStream out = new FileOutputStream(dest)) {
-                byte[] buffer = new byte[1024];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) out.write(buffer, 0, bytesRead);
-                selectedLibraryPaths.add(dest.getAbsolutePath());
-                successCount++;
-                Log.i(TAG, "Copied: " + fileName);
-            } catch (IOException e) {
-                Log.e(TAG, "Failed to copy: " + fileName, e);
+        // الحفظ باسم libinject.so تماماً كالكود الأصلي
+        File dest = new File(requireContext().getCacheDir(), "libinject.so");
+
+        try (InputStream inputStream = requireContext().getContentResolver().openInputStream(fileUri);
+             OutputStream outputStream = new FileOutputStream(dest)) {
+
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
             }
-        }
 
-        if (successCount > 0) binding.libPath.setText(successCount + " file(s) selected");
+            libraryPath = dest.getAbsolutePath();
+            binding.libPath.setText(path.substring(path.lastIndexOf('/') + 1));
+            Log.i(TAG, "Library saved as libinject.so: " + libraryPath);
+
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to copy library", e);
+            Toast.makeText(getActivity(), "Failed to copy library", Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override
@@ -125,60 +128,73 @@ public class HomeFragment extends BaseFragment {
         setupRecyclerView();
         loadConfigs();
 
+        // File picker — ملف واحد فقط الآن
         binding.libPathChoose.setEndIconOnClickListener(v -> {
             Intent chooseFile = new Intent(Intent.ACTION_GET_CONTENT);
             chooseFile.setType("*/*");
             chooseFile.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/octet-stream"});
-            chooseFile.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-            chooseFile = Intent.createChooser(chooseFile, "Select .so files");
+            chooseFile = Intent.createChooser(chooseFile, "Select .so file");
             startActivityForResult(chooseFile, 1);
         });
 
+        // Save & Install
         binding.installButton.setOnClickListener(v -> {
             if (selectedApp == null) {
                 Toast.makeText(requireContext(), "Please select an app", Toast.LENGTH_SHORT).show();
                 return;
             }
-            if (selectedLibraryPaths.isEmpty()) {
-                Toast.makeText(requireContext(), "Please select library files", Toast.LENGTH_SHORT).show();
+            if (libraryPath == null) {
+                Toast.makeText(requireContext(), "Please select a library file", Toast.LENGTH_SHORT).show();
                 return;
             }
 
             BlackBoxCore.get().installPackageAsUser(selectedApp, 0);
-            if (!BlackBoxCore.get().isInstalled(selectedApp, 0)) {
-                Toast.makeText(requireContext(), "Failed to install", Toast.LENGTH_SHORT).show();
+            boolean isInstalled = BlackBoxCore.get().isInstalled(selectedApp, 0);
+            if (!isInstalled) {
+                Toast.makeText(requireContext(), "Failed to install app", Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            saveConfig(new SavedConfig(selectedApp, selectedLibraryPaths));
-            Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show();
+            saveConfig(new SavedConfig(selectedApp, libraryPath));
+            Toast.makeText(requireContext(), "Saved! Tap the card to launch.", Toast.LENGTH_SHORT).show();
 
+            // Reset
             binding.appSelectorText.setText("");
             binding.libPath.setText("");
             selectedApp = null;
-            selectedLibraryPaths.clear();
+            libraryPath = null;
         });
 
         return binding.getRoot();
-    }
-
-    private void launchApp(SavedConfig config) {
-        if (!BlackBoxCore.get().isInstalled(config.packageName, 0)) {
-            Toast.makeText(requireContext(), "App not installed, please reinstall", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        Log.i(TAG, "Launching: " + config.packageName);
-        Log.i(TAG, "Libraries: " + config.libraryPaths.toString());
-
-        // الحقن يحدث تلقائياً عبر IO redirect داخل launchApk
-        BlackBoxCore.get().launchApk(config.packageName, 0);
     }
 
     private void setupRecyclerView() {
         adapter = new SavedAppsAdapter(requireContext(), savedConfigs, new SavedAppsAdapter.OnAppActionListener() {
             @Override
             public void onLaunch(SavedConfig config) {
-                launchApp(config);
+                // نعيد نسخ المكتبة المحفوظة كـ libinject.so قبل التشغيل
+                File libFile = new File(config.libraryPath);
+                File dest = new File(requireContext().getCacheDir(), "libinject.so");
+
+                if (!libFile.getAbsolutePath().equals(dest.getAbsolutePath())) {
+                    try (InputStream in = new java.io.FileInputStream(libFile);
+                         OutputStream out = new FileOutputStream(dest)) {
+                        byte[] buf = new byte[1024];
+                        int n;
+                        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                    } catch (IOException e) {
+                        Log.e(TAG, "Failed to restore library", e);
+                    }
+                }
+
+                boolean isInstalled = BlackBoxCore.get().isInstalled(config.packageName, 0);
+                if (!isInstalled) {
+                    Toast.makeText(requireContext(), "App not installed, reinstall first", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                Log.i(TAG, "Launching: " + config.packageName);
+                BlackBoxCore.get().launchApk(config.packageName, 0);
             }
 
             @Override
@@ -189,6 +205,7 @@ public class HomeFragment extends BaseFragment {
                 Toast.makeText(requireContext(), "Removed", Toast.LENGTH_SHORT).show();
             }
         });
+
         binding.savedAppsList.setLayoutManager(new LinearLayoutManager(requireContext()));
         binding.savedAppsList.setAdapter(adapter);
     }
@@ -224,7 +241,9 @@ public class HomeFragment extends BaseFragment {
             String json = prefs.getString(KEY_CONFIGS, "[]");
             JSONArray arr = new JSONArray(json);
             savedConfigs.clear();
-            for (int i = 0; i < arr.length(); i++) savedConfigs.add(SavedConfig.fromJson(arr.getJSONObject(i)));
+            for (int i = 0; i < arr.length(); i++) {
+                savedConfigs.add(SavedConfig.fromJson(arr.getJSONObject(i)));
+            }
             adapter.notifyDataSetChanged();
         } catch (JSONException e) {
             Log.e(TAG, "Failed to load configs", e);
@@ -234,10 +253,14 @@ public class HomeFragment extends BaseFragment {
     private void setupApplist() {
         List<String> installedApps = Utility.getInstalledApps(requireContext());
         ArrayAdapter<String> appAdapter = new ArrayAdapter<>(
-            requireContext(), android.R.layout.simple_dropdown_item_1line, installedApps);
+            requireContext(),
+            android.R.layout.simple_dropdown_item_1line,
+            installedApps
+        );
         binding.appSelectorText.setAdapter(appAdapter);
-        binding.appSelectorText.setOnItemClickListener((parent, view, position, id) ->
-            selectedApp = (String) parent.getItemAtPosition(position));
+        binding.appSelectorText.setOnItemClickListener((parent, view, position, id) -> {
+            selectedApp = (String) parent.getItemAtPosition(position);
+        });
         binding.appSelectorText.setOnFocusChangeListener((view, hasFocus) -> {
             if (hasFocus) return;
             String currText = binding.appSelectorText.getText().toString();

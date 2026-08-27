@@ -45,26 +45,21 @@ public class SavedAppsAdapter extends RecyclerView.Adapter<SavedAppsAdapter.View
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         SavedConfig config = configs.get(position);
 
-        // App Name
         holder.appName.setText(config.packageName);
 
-        // Library count
-        int count = config.libraryPaths.size();
-        holder.libCount.setText(count + " librar" + (count == 1 ? "y" : "ies") + " loaded");
+        // اسم المكتبة فقط بدون المسار الكامل
+        String libName = config.libraryPath.substring(config.libraryPath.lastIndexOf('/') + 1);
+        holder.libCount.setText(libName);
 
-        // App Icon from system PackageManager
+        // أيقونة التطبيق
         try {
-            PackageManager pm = context.getPackageManager();
-            Drawable icon = pm.getApplicationIcon(config.packageName);
+            Drawable icon = context.getPackageManager().getApplicationIcon(config.packageName);
             holder.appIcon.setImageDrawable(icon);
         } catch (PackageManager.NameNotFoundException e) {
             holder.appIcon.setImageResource(android.R.drawable.sym_def_app_icon);
         }
 
-        // Launch
         holder.launchBtn.setOnClickListener(v -> listener.onLaunch(config));
-
-        // Delete
         holder.deleteBtn.setOnClickListener(v -> listener.onDelete(holder.getAdapterPosition()));
     }
 
