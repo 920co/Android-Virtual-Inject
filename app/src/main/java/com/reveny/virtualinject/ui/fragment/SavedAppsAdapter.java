@@ -47,11 +47,10 @@ public class SavedAppsAdapter extends RecyclerView.Adapter<SavedAppsAdapter.View
 
         holder.appName.setText(config.packageName);
 
-        // اسم المكتبة فقط بدون المسار الكامل
-        String libName = config.libraryPath.substring(config.libraryPath.lastIndexOf('/') + 1);
-        holder.libCount.setText(libName);
+        // نعرض عدد المكتبات المحملة
+        int libCount = (config.library2Path != null) ? 2 : 1;
+        holder.libCount.setText(libCount + " librar" + (libCount == 1 ? "y" : "ies") + " loaded");
 
-        // أيقونة التطبيق
         try {
             Drawable icon = context.getPackageManager().getApplicationIcon(config.packageName);
             holder.appIcon.setImageDrawable(icon);

@@ -52,8 +52,13 @@ public class HomeFragment extends BaseFragment {
     private static final String PREFS_NAME = "VirtualInjectPrefs";
     private static final String KEY_CONFIGS = "saved_configs";
 
+    private static final int PICK_LIB1 = 1;
+    private static final int PICK_LIB2 = 2;
+
     private String selectedApp;
-    private String libraryPath;
+    private String libraryPath;   // libinject.so
+    private String library2Path;  // libinject2.so (اختياري)
+
     private final List<SavedConfig> savedConfigs = new ArrayList<>();
     private SavedAppsAdapter adapter;
     private FragmentHomeBinding binding;
@@ -75,15 +80,17 @@ public class HomeFragment extends BaseFragment {
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (requestCode != 1 || resultCode != Activity.RESULT_OK || data == null) {
-            return;
-        }
+        if (resultCode != Activity.RESULT_OK || data == null) return;
 
-        Uri fileUri = data.getData();
-        if (fileUri == null) {
-            Toast.makeText(getActivity(), "File selection failed", Toast.LENGTH_SHORT).show();
-            return;
+        if (requestCode == PICK_LIB1) {
+            handleFilePick(data.getData(), "libinject.so", true);
+        } else if (requestCode == PICK_LIB2) {
+            handleFilePick(data.getData(), "libinject2.so", false);
         }
+    }
+
+    private void handleFilePick(Uri fileUri, String destName, boolean isPrimary) {
+        if (fileUri == null) return;
 
         String path = fileUri.getPath();
         if (path == null || !path.endsWith(".so")) {
@@ -91,25 +98,32 @@ public class HomeFragment extends BaseFragment {
             return;
         }
 
-        // الحفظ باسم libinject.so تماماً كالكود الأصلي
-        File dest = new File(requireContext().getCacheDir(), "libinject.so");
+        File dest = new File(requireContext().getCacheDir(), destName);
 
-        try (InputStream inputStream = requireContext().getContentResolver().openInputStream(fileUri);
-             OutputStream outputStream = new FileOutputStream(dest)) {
+        try (InputStream in = requireContext().getContentResolver().openInputStream(fileUri);
+             OutputStream out = new FileOutputStream(dest)) {
 
             byte[] buffer = new byte[1024];
             int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, bytesRead);
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
             }
 
-            libraryPath = dest.getAbsolutePath();
-            binding.libPath.setText(path.substring(path.lastIndexOf('/') + 1));
-            Log.i(TAG, "Library saved as libinject.so: " + libraryPath);
+            String fileName = path.substring(path.lastIndexOf('/') + 1);
+
+            if (isPrimary) {
+                libraryPath = dest.getAbsolutePath();
+                binding.libPath.setText(fileName);
+                Log.i(TAG, "Library 1 saved as libinject.so");
+            } else {
+                library2Path = dest.getAbsolutePath();
+                binding.lib2Path.setText(fileName);
+                Log.i(TAG, "Library 2 saved as libinject2.so");
+            }
 
         } catch (IOException e) {
-            Log.e(TAG, "Failed to copy library", e);
-            Toast.makeText(getActivity(), "Failed to copy library", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Failed to copy: " + destName, e);
+            Toast.makeText(getActivity(), "Failed to copy file", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -128,13 +142,20 @@ public class HomeFragment extends BaseFragment {
         setupRecyclerView();
         loadConfigs();
 
-        // File picker — ملف واحد فقط الآن
-        binding.libPathChoose.setEndIconOnClickListener(v -> {
-            Intent chooseFile = new Intent(Intent.ACTION_GET_CONTENT);
-            chooseFile.setType("*/*");
-            chooseFile.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/octet-stream"});
-            chooseFile = Intent.createChooser(chooseFile, "Select .so file");
-            startActivityForResult(chooseFile, 1);
+        // اختيار المكتبة الأولى
+        binding.libPathChoose.setEndIconOnClickListener(v -> pickFile(PICK_LIB1));
+
+        // اختيار المكتبة الثانية (اختيارية)
+        binding.lib2PathChoose.setEndIconOnClickListener(v -> pickFile(PICK_LIB2));
+
+        // زر مسح المكتبة الثانية
+        binding.clearLib2.setOnClickListener(v -> {
+            library2Path = null;
+            binding.lib2Path.setText("");
+            // نحذف libinject2.so من الـ cache إذا كان موجوداً
+            File f = new File(requireContext().getCacheDir(), "libinject2.so");
+            if (f.exists()) f.delete();
+            Toast.makeText(requireContext(), "Second library cleared", Toast.LENGTH_SHORT).show();
         });
 
         // Save & Install
@@ -155,36 +176,41 @@ public class HomeFragment extends BaseFragment {
                 return;
             }
 
-            saveConfig(new SavedConfig(selectedApp, libraryPath));
+            saveConfig(new SavedConfig(selectedApp, libraryPath, library2Path));
             Toast.makeText(requireContext(), "Saved! Tap the card to launch.", Toast.LENGTH_SHORT).show();
 
             // Reset
             binding.appSelectorText.setText("");
             binding.libPath.setText("");
+            binding.lib2Path.setText("");
             selectedApp = null;
             libraryPath = null;
+            library2Path = null;
         });
 
         return binding.getRoot();
+    }
+
+    private void pickFile(int requestCode) {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/octet-stream"});
+        intent = Intent.createChooser(intent, requestCode == PICK_LIB1 ? "Select main .so" : "Select second .so");
+        startActivityForResult(intent, requestCode);
     }
 
     private void setupRecyclerView() {
         adapter = new SavedAppsAdapter(requireContext(), savedConfigs, new SavedAppsAdapter.OnAppActionListener() {
             @Override
             public void onLaunch(SavedConfig config) {
-                // نعيد نسخ المكتبة المحفوظة كـ libinject.so قبل التشغيل
-                File libFile = new File(config.libraryPath);
-                File dest = new File(requireContext().getCacheDir(), "libinject.so");
-
-                if (!libFile.getAbsolutePath().equals(dest.getAbsolutePath())) {
-                    try (InputStream in = new java.io.FileInputStream(libFile);
-                         OutputStream out = new FileOutputStream(dest)) {
-                        byte[] buf = new byte[1024];
-                        int n;
-                        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-                    } catch (IOException e) {
-                        Log.e(TAG, "Failed to restore library", e);
-                    }
+                // نعيد نسخ المكتبات قبل التشغيل
+                restoreLibrary(config.libraryPath, "libinject.so");
+                if (config.library2Path != null) {
+                    restoreLibrary(config.library2Path, "libinject2.so");
+                } else {
+                    // نحذف libinject2.so لو لم تكن مطلوبة
+                    File f = new File(requireContext().getCacheDir(), "libinject2.so");
+                    if (f.exists()) f.delete();
                 }
 
                 boolean isInstalled = BlackBoxCore.get().isInstalled(config.packageName, 0);
@@ -192,7 +218,6 @@ public class HomeFragment extends BaseFragment {
                     Toast.makeText(requireContext(), "App not installed, reinstall first", Toast.LENGTH_SHORT).show();
                     return;
                 }
-
                 Log.i(TAG, "Launching: " + config.packageName);
                 BlackBoxCore.get().launchApk(config.packageName, 0);
             }
@@ -208,6 +233,20 @@ public class HomeFragment extends BaseFragment {
 
         binding.savedAppsList.setLayoutManager(new LinearLayoutManager(requireContext()));
         binding.savedAppsList.setAdapter(adapter);
+    }
+
+    private void restoreLibrary(String srcPath, String destName) {
+        File dest = new File(requireContext().getCacheDir(), destName);
+        File src = new File(srcPath);
+        if (src.getAbsolutePath().equals(dest.getAbsolutePath())) return;
+        try (InputStream in = new java.io.FileInputStream(src);
+             OutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[1024];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to restore: " + destName, e);
+        }
     }
 
     private void saveConfig(SavedConfig config) {
