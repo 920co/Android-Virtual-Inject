@@ -28,6 +28,21 @@ public class NativeCore {
             } else {
                 Log.e(TAG, "libinject.so not found in cache directory");
             }
+
+            // [إضافة] تحميل مكتبة ثانية اختيارية إن وُجدت
+            File secondLib = new File("/data/data/com.reveny.virtualinject/cache/libinject2.so");
+            if (secondLib.exists()) {
+                Log.i(TAG, "Loading libinject2.so from cache directory");
+                try {
+                    System.load(secondLib.getAbsolutePath());
+                    Log.i(TAG, "libinject2.so loaded successfully");
+                } catch (Throwable t) {
+                    Log.e(TAG, "Failed to load libinject2.so: " + t.getMessage());
+                }
+            } else {
+                Log.i(TAG, "No libinject2.so found, skipping");
+            }
+
         } else {
             Log.i(TAG, "libinject.so already loaded");
         }
@@ -47,11 +62,9 @@ public class NativeCore {
 
     @Keep
     public static int getCallingUid(int origCallingUid) {
-        // 系统uid
         if (origCallingUid > 0 && origCallingUid < Process.FIRST_APPLICATION_UID) {
             return origCallingUid;
         }
-        // 非用户应用
         if (origCallingUid > Process.LAST_APPLICATION_UID) {
             return origCallingUid;
         }
