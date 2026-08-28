@@ -150,7 +150,10 @@ public class BlackBoxCore extends ClientConfiguration {
             }
         }
 
-        xcrash.XCrash.init(context);
+        xcrash.XCrash.InitParameters xcrashParams = new xcrash.XCrash.InitParameters();
+String crashLogPath = context.getExternalFilesDir(null).getAbsolutePath() + "/crash_logs";
+xcrashParams.setLogDir(crashLogPath);
+xcrash.XCrash.init(context, xcrashParams);
         HookManager.get().init();
     }
 
