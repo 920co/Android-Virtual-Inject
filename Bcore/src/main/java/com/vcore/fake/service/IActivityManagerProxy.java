@@ -8,6 +8,7 @@ import android.app.ActivityManager;
 import android.app.IServiceConnection;
 import android.app.Notification;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.IIntentReceiver;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -232,10 +233,20 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             long flags = getIntOrLongValue(args[5]);
             ResolveInfo resolveInfo = BlackBoxCore.getBPackageManager().resolveService(intent, 0, resolvedType, userId);
             if (resolveInfo != null || AppSystemEnv.isOpenPackage(intent.getComponent())) {
+                // [إصلاح] BIND_EXTERNAL_SERVICE (0x80000000) ضروري لخدمات WebView المعزولة
+                // (Sandboxed Process مثل org.chromium...SandboxedProcessService).
+                // الكود الأصلي كان يحذف هذا الـ bit دائماً عبر (flags & 0x7FFFFFFF)،
+                // فتفشل خدمات WebView بـ SecurityException وينهار التطبيق.
+                // هنا نبقيه فقط عندما يكون مضبوطاً أصلاً في الطلب.
+                final long BIND_EXTERNAL_SERVICE = 0x80000000L;
+                long maskedFlags = flags & 2147483647L;
+                if ((flags & BIND_EXTERNAL_SERVICE) != 0) {
+                    maskedFlags |= BIND_EXTERNAL_SERVICE;
+                }
                 if (BuildCompat.isU()){
-                    args[5] = Long.valueOf(flags & 2147483647L);
+                    args[5] = Long.valueOf(maskedFlags);
                 }else{
-                    args[5] = Integer.valueOf((int) (flags & 2147483647L));
+                    args[5] = Integer.valueOf((int) maskedFlags);
                 }
                 Intent proxyIntent = BlackBoxCore.getBActivityManager().bindService(intent, connection == null ? null : connection.asBinder(), resolvedType,
                         userId);
