@@ -77,7 +77,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:hint="Library 1 (required)"
+                    android:hint="Library 1"
                     app:endIconDrawable="@drawable/folder_open_outline"
                     app:endIconMode="custom">
 
@@ -102,7 +102,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:hint="Library 2 (optional)"
+                        android:hint="Library 2"
                         app:endIconDrawable="@drawable/folder_open_outline"
                         app:endIconMode="custom">
 
