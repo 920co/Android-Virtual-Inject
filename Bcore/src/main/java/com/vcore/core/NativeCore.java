@@ -7,7 +7,10 @@ import android.util.Log;
 
 import androidx.annotation.Keep;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 
 import com.vcore.BlackBoxCore;
 import com.vcore.app.BActivityThread;
@@ -17,35 +20,67 @@ public class NativeCore {
     public static final String TAG = "NativeCore";
     private static boolean isInjected = false;
 
+    // الحد الأقصى للانتظار قبل تحميل مكتبة (بالمللي ثانية).
+    // لو اللعبة تستخدم IL2CPP (Unity)، سننتظر ظهور libil2cpp.so في الذاكرة
+    // قبل تحميل مكتبتنا، لتفادي تعطل ناتج عن الوصول لدوال المحرك قبل تحميله.
+    // لو لم تظهر خلال هذه المهلة (تطبيق عادي بدون IL2CPP)، نُحمّل المكتبة كالمعتاد.
+    private static final long IL2CPP_WAIT_TIMEOUT_MS = 8000;
+    private static final long IL2CPP_POLL_INTERVAL_MS = 50;
+
     static {
         System.loadLibrary("vcore");
 
         if (!isInjected) {
-            Log.i(TAG, "Loading libinject.so from cache directory");
-            if (new File("/data/data/com.reveny.virtualinject/cache/libinject.so").exists()) {
-                Log.i(TAG, "Loading libinject.so from cache directory");
-                System.load("/data/data/com.reveny.virtualinject/cache/libinject.so");
-            } else {
-                Log.e(TAG, "libinject.so not found in cache directory");
-            }
-
-            // [إضافة] تحميل مكتبة ثانية اختيارية إن وُجدت
-            File secondLib = new File("/data/data/com.reveny.virtualinject/cache/libinject2.so");
-            if (secondLib.exists()) {
-                Log.i(TAG, "Loading libinject2.so from cache directory");
-                try {
-                    System.load(secondLib.getAbsolutePath());
-                    Log.i(TAG, "libinject2.so loaded successfully");
-                } catch (Throwable t) {
-                    Log.e(TAG, "Failed to load libinject2.so: " + t.getMessage());
-                }
-            } else {
-                Log.i(TAG, "No libinject2.so found, skipping");
-            }
-
+            loadIfExists("/data/data/com.reveny.virtualinject/cache/libinject.so", "libinject.so");
+            loadIfExists("/data/data/com.reveny.virtualinject/cache/libinject2.so", "libinject2.so");
         } else {
             Log.i(TAG, "libinject.so already loaded");
         }
+    }
+
+    // نتحقق من وجود il2cpp في خريطة ذاكرة العملية الحالية
+    private static boolean isIl2CppLoaded() {
+        try (BufferedReader reader = new BufferedReader(new FileReader("/proc/self/maps"))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("libil2cpp.so")) {
+                    return true;
+                }
+            }
+        } catch (IOException e) {
+            // نتجاهل ونعتبرها غير محملة بعد
+        }
+        return false;
+    }
+
+    private static void loadIfExists(String path, String label) {
+        File libFile = new File(path);
+        if (!libFile.exists()) {
+            Log.i(TAG, label + " not found, skipping");
+            return;
+        }
+
+        // ننتظر في خيط منفصل حتى يظهر il2cpp أو تنتهي المهلة، ثم نُحمّل المكتبة.
+        // هذا لا يؤخر تطبيقات لا تستخدم IL2CPP لأكثر من المهلة القصوى فقط،
+        // ويحل مشكلة الحقن قبل جاهزية محرك الألعاب.
+        new Thread(() -> {
+            long waited = 0;
+            while (!isIl2CppLoaded() && waited < IL2CPP_WAIT_TIMEOUT_MS) {
+                try {
+                    Thread.sleep(IL2CPP_POLL_INTERVAL_MS);
+                } catch (InterruptedException ignored) {
+                }
+                waited += IL2CPP_POLL_INTERVAL_MS;
+            }
+
+            try {
+                Log.i(TAG, "Loading " + label + " (waited " + waited + "ms)");
+                System.load(path);
+                Log.i(TAG, label + " loaded successfully");
+            } catch (Throwable t) {
+                Log.e(TAG, "Failed to load " + label + ": " + t.getMessage());
+            }
+        }, "InjectLoader-" + label).start();
     }
 
     public static native void init(int apiLevel);
