@@ -6,35 +6,35 @@
 #include <string.h>
 #include <stdio.h>
 
-// منع التحميل المزدوج
 static bool secondLibLoaded = false;
 
-static void tryLoadSecondLibrary(const char *firstLibPath) {
+static void tryLoadSecondLibrary() {
     if (secondLibLoaded) return;
-
-    // نبني مسار libinject2.so من نفس مجلد libinject.so
-    const char *pos = strstr(firstLibPath, "libinject.so");
-    if (pos == nullptr) return;
-
-    char secondPath[512] = {0};
-    int prefixLen = pos - firstLibPath;
-    strncpy(secondPath, firstLibPath, prefixLen);
-    strcat(secondPath, "libinject2.so");
-
-    // نتحقق أن الملف موجود أصلاً
-    if (access(secondPath, F_OK) != 0) {
-        ALOGD("No second library found at: %s", secondPath);
-        return;
-    }
-
-    void *handle = dlopen(secondPath, RTLD_NOW | RTLD_GLOBAL);
-    if (handle != nullptr) {
-        ALOGD("Second library loaded successfully: %s", secondPath);
-    } else {
-        ALOGD("Failed to load second library: %s", dlerror());
-    }
-
     secondLibLoaded = true;
+
+    // نجرب المسارين الممكنين لـ cache الـ host app
+    const char* candidates[] = {
+        "/data/data/com.reveny.virtualinject/cache/libinject2.so",
+        "/data/user/0/com.reveny.virtualinject/cache/libinject2.so",
+        nullptr
+    };
+
+    for (int i = 0; candidates[i] != nullptr; i++) {
+        if (access(candidates[i], F_OK) != 0) {
+            ALOGD("libinject2.so not found at: %s", candidates[i]);
+            continue;
+        }
+
+        void *handle = dlopen(candidates[i], RTLD_NOW | RTLD_GLOBAL);
+        if (handle != nullptr) {
+            ALOGD("Second library loaded: %s", candidates[i]);
+            return;
+        } else {
+            ALOGD("dlopen failed for %s: %s", candidates[i], dlerror());
+        }
+    }
+
+    ALOGD("Could not load libinject2.so from any known path");
 }
 
 HOOK_JNI(jstring, nativeLoad, JNIEnv *env, jobject obj, jstring name, jobject class_loader) {
@@ -43,9 +43,8 @@ HOOK_JNI(jstring, nativeLoad, JNIEnv *env, jobject obj, jstring name, jobject cl
 
     jstring result = orig_nativeLoad(env, obj, name, class_loader);
 
-    // بعد تحميل libinject.so نحاول تحميل libinject2.so
     if (strstr(nameC, "libinject.so")) {
-        tryLoadSecondLibrary(nameC);
+        tryLoadSecondLibrary();
     }
 
     env->ReleaseStringUTFChars(name, nameC);
@@ -59,9 +58,8 @@ HOOK_JNI(jstring, nativeLoadNew, JNIEnv *env, jobject obj, jstring name, jobject
 
     jstring result = orig_nativeLoadNew(env, obj, name, class_loader, caller);
 
-    // نفس الشيء للإصدارات الجديدة من Android
     if (strstr(nameC, "libinject.so")) {
-        tryLoadSecondLibrary(nameC);
+        tryLoadSecondLibrary();
     }
 
     env->ReleaseStringUTFChars(name, nameC);
@@ -69,15 +67,16 @@ HOOK_JNI(jstring, nativeLoadNew, JNIEnv *env, jobject obj, jstring name, jobject
 }
 
 void RuntimeHook::init(JNIEnv *env) {
-    // نعيد تهيئة العلامة عند كل launch جديد
     secondLibLoaded = false;
 
     const char *className = "java/lang/Runtime";
     if (BoxCore::getApiLevel() >= __ANDROID_API_Q__) {
-        JniHook::HookJniFun(env, className, "nativeLoad","(Ljava/lang/String;Ljava/lang/ClassLoader;Ljava/lang/Class;)Ljava/lang/String;",
-                            (void *) new_nativeLoadNew, (void **) (&orig_nativeLoadNew), true);
+        JniHook::HookJniFun(env, className, "nativeLoad",
+            "(Ljava/lang/String;Ljava/lang/ClassLoader;Ljava/lang/Class;)Ljava/lang/String;",
+            (void *) new_nativeLoadNew, (void **) (&orig_nativeLoadNew), true);
     } else {
-        JniHook::HookJniFun(env, className, "nativeLoad","(Ljava/lang/String;Ljava/lang/ClassLoader;)Ljava/lang/String;",
-                            (void *) new_nativeLoad, (void **) (&orig_nativeLoad), true);
+        JniHook::HookJniFun(env, className, "nativeLoad",
+            "(Ljava/lang/String;Ljava/lang/ClassLoader;)Ljava/lang/String;",
+            (void *) new_nativeLoad, (void **) (&orig_nativeLoad), true);
     }
 }
