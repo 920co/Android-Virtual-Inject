@@ -88,7 +88,7 @@
                         android:inputType="text" />
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <!-- Library 2 + Clear button -->
+                <!-- Library 2 + Clear button (icon) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -115,11 +115,12 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/clear_lib2"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        style="@style/Widget.Material3.Button.IconButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="✕" />
+                        android:layout_marginStart="4dp"
+                        app:icon="@drawable/ic_delete"
+                        app:iconTint="?attr/colorError" />
                 </LinearLayout>
 
                 <!-- Saved Apps -->
