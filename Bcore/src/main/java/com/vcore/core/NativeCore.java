@@ -26,6 +26,10 @@ public class NativeCore {
     // لو لم تظهر خلال هذه المهلة (تطبيق عادي بدون IL2CPP)، نُحمّل المكتبة كالمعتاد.
     private static final long IL2CPP_WAIT_TIMEOUT_MS = 8000;
     private static final long IL2CPP_POLL_INTERVAL_MS = 50;
+    // فترة أمان إضافية بعد اكتشاف libil2cpp.so في الذاكرة:
+    // مجرد ظهور الملف في الذاكرة لا يعني أن IL2CPP انتهى من تهيئته الداخلية
+    // (إنشاء الـ Domain وتحميل الـ Metadata)، فننتظر قليلاً إضافياً للأمان.
+    private static final long IL2CPP_SETTLE_MS = 2500;
 
     static {
         System.loadLibrary("vcore");
@@ -65,7 +69,12 @@ public class NativeCore {
         // ويحل مشكلة الحقن قبل جاهزية محرك الألعاب.
         new Thread(() -> {
             long waited = 0;
-            while (!isIl2CppLoaded() && waited < IL2CPP_WAIT_TIMEOUT_MS) {
+            boolean foundIl2Cpp = false;
+            while (waited < IL2CPP_WAIT_TIMEOUT_MS) {
+                if (isIl2CppLoaded()) {
+                    foundIl2Cpp = true;
+                    break;
+                }
                 try {
                     Thread.sleep(IL2CPP_POLL_INTERVAL_MS);
                 } catch (InterruptedException ignored) {
@@ -73,8 +82,17 @@ public class NativeCore {
                 waited += IL2CPP_POLL_INTERVAL_MS;
             }
 
+            // لو وجدنا il2cpp، ننتظر فترة استقرار إضافية قبل التحميل
+            if (foundIl2Cpp) {
+                Log.i(TAG, "il2cpp detected after " + waited + "ms, waiting extra " + IL2CPP_SETTLE_MS + "ms to settle");
+                try {
+                    Thread.sleep(IL2CPP_SETTLE_MS);
+                } catch (InterruptedException ignored) {
+                }
+            }
+
             try {
-                Log.i(TAG, "Loading " + label + " (waited " + waited + "ms)");
+                Log.i(TAG, "Loading " + label + " (il2cpp found=" + foundIl2Cpp + ")");
                 System.load(path);
                 Log.i(TAG, label + " loaded successfully");
             } catch (Throwable t) {
